@@ -18,11 +18,18 @@ namespace Pithagoras.Models
 		public string Name { get; set; }
 		public string IPAddress { get; set; }
 		public int RemotePort { get; set; }
+
+		[field: NonSerialized]
+		public bool Error { get; set; }
+		[field: NonSerialized]
 		public TcpClient TcpClient { get; set; }
+		[field: NonSerialized]
+		public bool Connected { get; set; }
+
+
 		private readonly ILogger<PiClient> _logger;
 
-		[NonSerialized]
-		public bool Connected;
+
 		public PiClient() : this(null) { }
 
 		public PiClient(TcpClient client, ILoggerFactory loggerFactory = null)
@@ -49,7 +56,7 @@ namespace Pithagoras.Models
 				try
 				{
 					var stream = TcpClient.GetStream();
-					_logger.LogInformation($"Client {Name} connected!");
+					_logger.LogInformation($"Client {Name} connected");
 					Connected = true;
 					while (!token.IsCancellationRequested)
 					{
@@ -65,7 +72,7 @@ namespace Pithagoras.Models
 						await Task.Delay(1000, token);
 					}
 				}
-				catch (TaskCanceledException ex)
+				catch (TaskCanceledException)
 				{
 
 				}
@@ -76,26 +83,43 @@ namespace Pithagoras.Models
 				finally
 				{
 					Connected = false;
+					_logger.LogInformation($"Client {Name} disconnected");
 				}
 			});
 		}
 
-		public bool ConnectToServer(string name, string ipAddress, int port)
+		public async Task<bool> ConnectToServerAsync(string name, string ipAddress, int port, CancellationToken token = default)
 		{
-			try
+			int retries = 0;
+			while (true)
 			{
-				this.Name = name;
-				this.RemotePort = port;
-				this.IPAddress = ipAddress;
-				TcpClient = new TcpClient(ipAddress, port);
-				Connected = true;
-				return true;
+				try
+				{
+					this.Name = name;
+					this.RemotePort = port;
+					this.IPAddress = ipAddress;
+					TcpClient = new TcpClient();
+					await TcpClient.ConnectAsync(ipAddress, port);
+					Connected = true;
+					_logger.LogInformation($"Connected to client {name}");
+					return true;
+				}
+				catch (SocketException)
+				{
+					_logger.LogError($"Unable to connect to client {name}.");
+				}
+				catch (Exception ex)
+				{
+					_logger.LogError(ex, "Error connecting to client.");
+				}
+				retries++;
+				if (retries == 3)
+				{
+					Error = true;
+					return false;
+				}
+				await Task.Delay(1000, token);
 			}
-			catch(Exception ex)
-			{
-				_logger.LogError(ex, "Error connecting to client");
-			}
-			return false;
 		}
 
 	}

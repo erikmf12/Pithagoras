@@ -19,6 +19,8 @@ namespace Pithagoras.Workers
 		private readonly IClientCache _clientCache;
 		private readonly IOptionsMonitor<AppConfig> _config;
 		private readonly ILogger<HostConnectorWorker> _logger;
+		private List<PiHost> _errorHosts = new List<PiHost>();
+		private CancellationToken _token;
 
 		public HostConnectorWorker(IClientCache clientCache,
 			IOptionsMonitor<AppConfig> config,
@@ -32,36 +34,37 @@ namespace Pithagoras.Workers
 
 		protected override async Task ExecuteAsync(CancellationToken st)
 		{
+			_token = st;
 			while (!st.IsCancellationRequested)
 			{
 				var hosts = _config.CurrentValue.Hosts;
 				if (hosts != null && hosts.Length > 0)
 				{
-					foreach (var client in _config.CurrentValue.Hosts)
+					foreach (var host in _config.CurrentValue.Hosts)
 					{
-						if(_clientCache.Clients.Any(x => x.IPAddress == client.IPAddress))
+						if (_clientCache.Clients.Any(x => x.IPAddress == host.IPAddress))
 						{
 							continue;
 						}
-						if (TryConnectingToHost(client))
+						else if (_errorHosts.Contains(host))
 						{
-							_logger.LogInformation($"Connected to {client.Name}");
+							continue;
+						}
+
+						PiClient piClient = new PiClient();
+						if (await piClient.ConnectToServerAsync(host.Name, host.IPAddress, host.Port, _token))
+						{
+							_logger.LogInformation($"Connected to {host.Name}");
+							_clientCache.AddClient(piClient);
+						}
+						else
+						{
+							_errorHosts.Add(host);
 						}
 					}
 				}
-				await Task.Delay(2000);
+				await Task.Delay(5000, st);
 			}
-		}
-
-		private bool TryConnectingToHost(PiHost host)
-		{
-			PiClient piClient = new PiClient();
-			if( piClient.ConnectToServer(host.Name, host.IPAddress, host.Port))
-			{
-				_clientCache.AddClient(piClient);
-				return true;
-			}
-			return false;
 		}
 	}
 }

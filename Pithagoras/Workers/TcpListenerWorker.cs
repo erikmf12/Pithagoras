@@ -32,11 +32,13 @@ namespace Pithagoras.Workers
 			_logger = loggerFactory.CreateLogger<TcpListenerWorker>();
 		}
 
-
-		public override Task StartAsync(CancellationToken cancellationToken)
+		protected override async Task ExecuteAsync(CancellationToken st)
 		{
+			_appStopToken = st;
+			st.Register(StopListening);
+
 			var args = Environment.GetCommandLineArgs();
-			if (args == null || !int.TryParse(args[0], out _port))
+			if (args.Length < 2 || !int.TryParse(args[1], out _port))
 			{
 				if (_config.CurrentValue.Port == 0)
 				{
@@ -46,20 +48,26 @@ namespace Pithagoras.Workers
 			}
 
 			InitListener();
-			return Task.CompletedTask;
-		}
 
-		protected override async Task ExecuteAsync(CancellationToken st)
-		{
-			_appStopToken = st;
+			_logger.LogInformation($"Listening for clients on port {_port}");
 			while (!st.IsCancellationRequested)
 			{
-				var client = await _tcpListener.AcceptTcpClientAsync();
-				AcceptClient(client);
-
-				await Task.Delay(100);
+				try
+				{
+					var client = await _tcpListener.AcceptTcpClientAsync();
+					AcceptClient(client);
+					await Task.Delay(100);
+				}
+				catch { }
 			}
 		}
+
+		private void StopListening()
+		{
+			_tcpListener.Stop();
+		}
+
+
 
 		private void AcceptClient(TcpClient client)
 		{

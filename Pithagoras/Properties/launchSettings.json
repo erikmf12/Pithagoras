@@ -1,10 +1,13 @@
-﻿{
+{
   "profiles": {
     "Pithagoras": {
       "commandName": "Project",
+      "commandLineArgs": "54329",
       "environmentVariables": {
         "DOTNET_ENVIRONMENT": "Development"
-      }
+      },
+      "remoteDebugEnabled": false,
+      "authenticationMode": "None"
     }
   }
 }
